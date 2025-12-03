@@ -120,14 +120,25 @@ document.addEventListener('DOMContentLoaded', function() {
             if (response.ok) {
                 // SUCCESS: Data inserted into DB and WebHook triggered
                 displayMessage("Success! Your family connection data has been saved and the viability check has started. An analyst will contact you soon.", 'agent');
+            } else if (response.status === 401) {
+                // SPECIFIC SECURITY ERROR (401 - Nonce/Authentication Failure)
+                displayMessage(`Security Alert: It seems our connection token expired. Please reload the page to restart the secure session.`, 'agent');
+                console.error('API Error Response: Security token expired (401).', result);
+
+            } else if (response.status === 400) {
+                // CLIENT ERROR (400 - Missing Data from PHP Logic)
+                displayMessage(`Input Error: We are missing critical data. Please restart the conversation to ensure all fields are captured.`, 'agent');
+                console.error('API Error Response: Missing data (400).', result);
+                
             } else {
-                // FAILURE: Database or Validation Error from PHP Back End
-                displayMessage(`Connection Error (${response.status}). Please try again later.`, 'agent');
+                // GENERIC BACK END or DB ERROR (500)
+                displayMessage(`System Error (${response.status}). Could not complete the viability check. Please contact support.`, 'agent');
                 console.error('API Error Response:', result);
             }
+
         } catch (error) {
             // CATCH: Network failure or PHP fatal error
-            displayMessage("Network Error: Could not connect to the viability service. Please contact support.", 'agent');
+            displayMessage("Network Error: Could not connect to the viability service. Please try again later.", 'agent');
             console.error('Network or Uncaught Error:', error);
         } finally {
             inputField.disabled = false; // Re-enable input (for restart command)
