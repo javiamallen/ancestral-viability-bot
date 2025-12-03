@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: AVB Core Functionality
-Description: Handles all Full-Stack logic for the Ancestral Viability Bot (AVB).
+Description: Handles all Full-Stack logic for the Ancestral Viability Bot (AVB), including DB, REST API, Security, and Logging.
 Version: 1.0
 Author: Javiera Allende
 Author URI: [Your LinkedIn URL]
@@ -14,12 +14,13 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // PHASE 1: DATABASE AND SECURITY SETUP
 // ===============================================
 
-// 1. FUNCTION TO CREATE DB TABLE ON PLUGIN ACTIVATION
+// 1. FUNCTION TO CREATE DB TABLE ON PLUGIN ACTIVATION (Paso 2.1)
 function avb_create_db_table() {
     global $wpdb;
     $avb_table_name = $wpdb->prefix . 'avb_ancestor_data';
     $charset_collate = $wpdb->get_charset_collate();
 
+    // SQL query to create the table structure for conversational data entry
     $sql = "CREATE TABLE $avb_table_name (
         id mediumint(9) NOT NULL AUTO_INCREMENT,
         session_id varchar(100) NOT NULL,
@@ -40,21 +41,37 @@ function avb_create_db_table() {
 register_activation_hook( __FILE__, 'avb_create_db_table' );
 
 
-// 2. SECURITY CHECK: NONCE VALIDATION FUNCTION (Fase 2.4)
+// 2. SECURITY CHECK: NONCE VALIDATION FUNCTION (Paso 2.4)
 function avb_validate_rest_nonce( $request ) {
-    // The nonce token is usually sent in the header by JavaScript
+    // The nonce token is required to be sent in the header by the JavaScript Front End
     $nonce = $request->get_header( 'X-WP-Nonce' );
     if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+        // Log the security failure
+        avb_log_event( 'Security violation: Invalid Nonce token received for REST API.', 'security-alert' );
         return new WP_Error( 'rest_forbidden', __( 'Invalid nonce token. Access denied for security.', 'avb-core' ), array( 'status' => 401 ) );
     }
     return true;
 }
 
+// 3. LOGGING FUNCTION (API Audit and Debugging - Paso 2.5)
+function avb_log_event( $message, $level = 'info' ) {
+    if ( ! is_string( $message ) ) {
+        // Ensures that complex data (like arrays/objects) is converted to a readable string
+        $message = print_r( $message, true );
+    }
+
+    $log_prefix = strtoupper( $level ) . ' | AVB-AUDIT | ';
+    
+    // Sends output to the server's error log file (standard WordPress practice)
+    error_log( $log_prefix . $message );
+}
+
+
 // ===============================================
 // PHASE 2: API ENDPOINTS AND INTEGRATION
 // ===============================================
 
-// 3. CREATE CUSTOM REST ENDPOINT TO RECEIVE DATA (Paso 2.2)
+// 4. REGISTER CUSTOM REST ENDPOINT (Paso 2.2)
 function avb_register_rest_endpoint() {
     register_rest_route( 'avb/v1', '/submit-ancestor-data', array(
         'methods' => 'POST', 
@@ -65,12 +82,14 @@ function avb_register_rest_endpoint() {
 add_action( 'rest_api_init', 'avb_register_rest_endpoint' );
 
 
-// 4. API CALLBACK FUNCTION (Logic to insert data)
+// 5. API CALLBACK FUNCTION (Logic to insert data)
 function avb_handle_ancestor_data( $request ) {
     // Get parameters from the JSON request body
     $params = $request->get_params();
 
     if ( empty( $params['client_email'] ) || empty( $params['name'] ) ) {
+        // Log the failure due to missing data
+        avb_log_event( 'API request rejected: Missing client_email or name.', 'error' );
         return new WP_Error( 'missing_data', 'Required fields are missing.', array( 'status' => 400 ) );
     }
 
@@ -92,21 +111,27 @@ function avb_handle_ancestor_data( $request ) {
     );
 
     if ( $result ) {
-        // Now, trigger the WebHook to the external CRM (Paso 2.3)
+        // Trigger the WebHook to the external CRM (Paso 2.3)
         $webhook_status = avb_send_webhook_to_crm( $params ); 
         
+        // Log the success of the data insertion and the WebHook transfer
+        avb_log_event( 'Data ID: ' . $wpdb->insert_id . ' | WebHook Status: ' . $webhook_status['status'] . ' | Email: ' . $params['client_email'], 'success' );
+
         return new WP_REST_Response( array( 
             'message' => 'Ancestor data saved successfully!', 
             'id' => $wpdb->insert_id,
             'webhook_status' => $webhook_status['status']
         ), 200 );
     } else {
+        // Log the database failure
+        avb_log_event( 'DB INSERT FAILED for Email: ' . $params['client_email'] . ' | Error: ' . $wpdb->last_error, 'db-error' );
+        
         return new WP_Error( 'db_error', 'Could not save data to database.', array( 'status' => 500 ) );
     }
 }
 
 
-// 5. WEBHOOK FUNCTION (SIMULATE CRM TRANSFER - Paso 2.3)
+// 6. WEBHOOK FUNCTION (SIMULATE CRM TRANSFER - Paso 2.3)
 function avb_send_webhook_to_crm( $ancestor_data ) {
     // This simulates sending the qualified lead to a CRM WebHook URL.
     $crm_webhook_url = 'https://api.simulated-crm.com/lead-intake-endpoint'; 
@@ -125,10 +150,11 @@ function avb_send_webhook_to_crm( $ancestor_data ) {
     ));
 
     if ( is_wp_error( $response ) ) {
-        // Will be logged by the system in Fase 2.5
+        // Log the external error (Fase 2.5)
+        avb_log_event('Webhook failed to send to CRM. Error: ' . $response->get_error_message(), 'webhook-fail');
         return array('status' => 'webhook_error'); 
     } else {
-        // Check for specific CRM response status (e.g., 200 or 201)
+        // Simulate a successful response from the CRM
         return array('status' => 'success');
     }
 }
