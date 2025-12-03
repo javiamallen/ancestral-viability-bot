@@ -38,3 +38,54 @@ function avb_create_db_table() {
 register_activation_hook( __FILE__, 'avb_create_db_table' );
 
 // End of DB table creation and activation hook
+
+// --- 2. CREATE CUSTOM REST ENDPOINT TO RECEIVE DATA ---
+
+function avb_register_rest_endpoint() {
+    register_rest_route( 'avb/v1', '/submit-ancestor-data', array(
+        'methods' => 'POST', // Only allow POST requests (data submission)
+        'callback' => 'avb_handle_ancestor_data',
+        'permission_callback' => '__return_true', // Simplification: Allows public access for demonstration
+    ) );
+}
+add_action( 'rest_api_init', 'avb_register_rest_endpoint' );
+
+
+// 3. API CALLBACK FUNCTION (Logic to insert data)
+function avb_handle_ancestor_data( $request ) {
+    // SECURITY NOTE: In a real environment, NONCES (Fase 2.4) must be checked here.
+    
+    // Get parameters from the JSON request body
+    $params = $request->get_params();
+
+    // Check for necessary data (example: client email and first ancestor name)
+    if ( empty( $params['client_email'] ) || empty( $params['name'] ) ) {
+        return new WP_Error( 'missing_data', 'Required fields are missing.', array( 'status' => 400 ) );
+    }
+
+    // Insert data into the MySQL table (avb_ancestor_data)
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'avb_ancestor_data';
+
+    $result = $wpdb->insert(
+        $table_name,
+        array(
+            'session_id' => sanitize_text_field( $params['session_id'] ), // Unique ID for the conversation
+            'generation' => intval( $params['generation'] ),
+            'relation_type' => sanitize_text_field( $params['relation_type'] ),
+            'name' => sanitize_text_field( $params['name'] ),
+            'birth_location' => sanitize_text_field( $params['birth_location'] ),
+            'birth_date' => sanitize_text_field( $params['birth_date'] ),
+            'client_email' => sanitize_email( $params['client_email'] ),
+        )
+    );
+
+    if ( $result ) {
+        // Return a successful response to the JavaScript Front End
+        return new WP_REST_Response( array( 'message' => 'Ancestor data saved successfully!', 'id' => $wpdb->insert_id ), 200 );
+    } else {
+        // Return a database error response
+        return new WP_Error( 'db_error', 'Could not save data to database.', array( 'status' => 500 ) );
+    }
+}
+// End of Custom REST Endpoint
