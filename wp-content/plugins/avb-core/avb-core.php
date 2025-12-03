@@ -158,4 +158,20 @@ function avb_send_webhook_to_crm( $ancestor_data ) {
         return array('status' => 'success');
     }
 }
-// End of PHP Logic
+// --- 7. CHAT WIDGET INJECTION (Paso 3.1) ---
+
+function avb_inject_chat_widget_html() {
+    // We inject the HTML structure for the floating widget and the chat window
+    // The JavaScript will handle the interaction (open/close, dialog flow)
+    echo '<div id="avb-floating-button" title="Open Ancestral Viability Chat">💬</div>';
+    echo '<div id="avb-chat-container">';
+    echo '  <div id="avb-header">ANCESTRAL VIABILITY BOT</div>';
+    echo '  <div id="avb-dialogue-area"></div>';
+    echo '  <input type="text" id="avb-input" placeholder="Type your message...">';
+    echo '  <button id="avb-send">Send</button>';
+    echo '</div>';
+}
+add_action( 'wp_footer', 'avb_inject_chat_widget_html' ); // Inject into the footer of every page
+
+
+
