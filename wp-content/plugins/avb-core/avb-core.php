@@ -89,3 +89,41 @@ function avb_handle_ancestor_data( $request ) {
     }
 }
 // End of Custom REST Endpoint
+
+// --- 4. WEBHOOK FUNCTION (SIMULATE CRM TRANSFER) ---
+
+function avb_send_webhook_to_crm( $ancestor_data ) {
+    // SECURITY NOTE: This simulates sending the qualified lead to a CRM WebHook URL.
+    $crm_webhook_url = 'https://api.simulated-crm.com/lead-intake-endpoint'; 
+
+    // Structure the data as the CRM would expect (JSON payload)
+    $payload = array(
+        'client_name'   => $ancestor_data['name'],
+        'client_email'  => $ancestor_data['client_email'],
+        'viability_data' => array(
+            'generation_level' => $ancestor_data['generation'],
+            'birth_location'   => $ancestor_data['birth_location'],
+            'document_status'  => 'Unverified' // Placeholder status from initial data capture
+        ),
+        'internal_token' => 'AVB-SECURE-TOKEN-123' // Simulating a required API token (Fase 2.4 Security)
+    );
+
+    // WordPress function to send a POST request
+    $response = wp_remote_post( $crm_webhook_url, array(
+        'method' => 'POST',
+        'headers' => array( 'Content-Type' => 'application/json; charset=utf-8' ),
+        'body'    => wp_json_encode( $payload ),
+        'data_format' => 'body',
+        'timeout' => 10, // Timeout set to 10 seconds (standard practice)
+    ));
+
+    // For the demonstration, we just return the payload structure for logging
+    if ( is_wp_error( $response ) ) {
+        // Handle error status for logging (Fase 2.5)
+        return array('status' => 'error', 'message' => $response->get_error_message());
+    } else {
+        // Simulate a successful response from the CRM
+        return array('status' => 'success', 'payload_sent' => $payload);
+    }
+}
+// End of WebHook function
