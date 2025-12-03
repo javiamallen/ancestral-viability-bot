@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // State Variables for the conversation flow
     let conversationStep = 0;
     let ancestorData = {}; // Stores the temporary family tree data
+    let sessionId = 'avb-' + Math.random().toString(36).substring(2, 9); // Generate unique session ID
 
     // Security and API URL from wp_localize_script (functions.php)
     const restUrl = avb_rest_params.rest_url;
@@ -56,9 +57,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 displayMessage("Please provide the name of the ancestor to continue.", 'agent');
                 break;
                 
-            // NOTE: More cases would be needed here to capture the full tree (Generation 2, 3, etc.)
-            // For the demo, we jump directly to email capture after one ancestor.
-            
             case 3: // Capturing Birth Location
                 if (userInput) {
                     ancestorData.ancestor_1_location = userInput;
@@ -69,22 +67,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 displayMessage("Please provide the birth location.", 'agent');
                 break;
 
-            case 4: // Capturing Final Email and Triggering API Call
+            case 4: // Capturing Final Email and Triggering API Call (REAL LOGIC)
                 if (userInput && userInput.includes('@')) {
                     ancestorData.client_email = userInput;
-                    displayMessage("Processing your request... Please wait while I check the data viability...", 'agent');
+                    displayMessage("Processing your request... Please wait while I perform the viability check...", 'agent');
                     inputField.disabled = true; // Disable input while API processes
 
                     // --- FULL STACK ACTION: ASYNCHRONOUS API CALL ---
-                    // Here is where the code connects to the PHP endpoint (Paso 3.4)
+                    sendDataToAPI(ancestorData); 
                     
-                    // For the demo, we simulate success for now:
-                    setTimeout(() => {
-                        displayMessage(`Success! Your Viability Report results will be sent to ${userInput}. An agent will contact you soon.`, 'agent');
-                        inputField.disabled = false;
-                        conversationStep = 10; // End state
-                    }, 2500); 
-                    // End of simulated API call
                     break;
                 }
                 displayMessage("Please enter a valid email address.", 'agent');
@@ -96,6 +87,54 @@ document.addEventListener('DOMContentLoaded', function() {
                 break;
         }
     }
+
+
+    // --- NEW FUNCTION: SEND DATA TO PHP BACK END ---
+    async function sendDataToAPI(data) {
+        // Construct the payload with required data fields for the PHP Endpoint (Paso 2.2)
+        const payload = {
+            session_id: sessionId,
+            generation: 1, // Simplifying to the first generation for the demo
+            relation_type: 'Father/Mother',
+            name: data.ancestor_1_name,
+            birth_location: data.ancestor_1_location,
+            birth_date: 'Unknown',
+            client_email: data.client_email,
+        };
+        
+        const apiUrl = avb_rest_params.rest_url;
+        const nonce = avb_rest_params.nonce;
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': nonce // CRITICAL SECURITY HEADER (Paso 2.4)
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                // SUCCESS: Data inserted into DB and WebHook triggered
+                displayMessage("Success! Your family connection data has been saved and the viability check has started. An analyst will contact you soon.", 'agent');
+            } else {
+                // FAILURE: Database or Validation Error from PHP Back End
+                displayMessage(`Connection Error (${response.status}). Please try again later.`, 'agent');
+                console.error('API Error Response:', result);
+            }
+        } catch (error) {
+            // CATCH: Network failure or PHP fatal error
+            displayMessage("Network Error: Could not connect to the viability service. Please contact support.", 'agent');
+            console.error('Network or Uncaught Error:', error);
+        } finally {
+            inputField.disabled = false; // Re-enable input (for restart command)
+            conversationStep = 10; // End state
+        }
+    }
+
 
     // --- Event Handlers ---
 
